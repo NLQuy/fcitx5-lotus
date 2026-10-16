@@ -95,7 +95,12 @@ bool isBackspace(uint32_t sym) {
 
 uint32_t engineKeyValue(uint32_t sym) {
     const uint32_t codePoint = fcitx::Key::keySymToUnicode(static_cast<fcitx::KeySym>(sym));
-    return codePoint != 0U ? codePoint : sym;
+    // BackSpace, Tab, Return, Escape and Delete map to control code points, but the engine compares
+    // BackSpace and Tab against their key symbols, so control keys keep the symbol.
+    if (codePoint == 0U || codePoint < 0x20U || codePoint == 0x7FU) {
+        return sym;
+    }
+    return codePoint;
 }
 
 bool isUinputMode(fcitx::LotusMode mode) {

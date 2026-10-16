@@ -68,6 +68,7 @@ add_lotus_unit_test(lotus_key_processor key_processor lotus-key-processor-test.c
 add_lotus_unit_test(lotus_golden_smoke golden_smoke lotus-golden-smoke.cpp "unit;lotus;golden")
 
 add_lotus_headless_test(preedit_lifecycle preedit-lifecycle.cpp "integration;preedit")
+add_lotus_headless_test(preedit_backspace preedit-backspace.cpp "integration;preedit")
 add_lotus_headless_test(app_rule_reset app-rule-reset.cpp "integration;apprule")
 add_lotus_headless_test(preedit_smoke_client preedit-smoke-client.cpp "integration;preedit")
 add_lotus_headless_test(preedit_smoke_server preedit-smoke-server.cpp "integration;preedit")

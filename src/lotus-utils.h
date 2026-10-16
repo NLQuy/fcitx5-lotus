@@ -109,7 +109,8 @@ bool isBackspace(uint32_t sym);
  * @brief Key value handed to the engine for a key symbol.
  *
  * The Go engine took key symbols (BackSpace, Space and Tab are symbols, not code points), so a symbol
- * with a Unicode mapping is passed as its code point and every other symbol as-is.
+ * with a printable Unicode mapping is passed as its code point and every other symbol, control keys
+ * such as BackSpace and Tab included, as-is.
  * @param sym Key symbol of the event.
  * @return Key value for lotus::KeyProcessor::processKey.
  */
