@@ -8,6 +8,12 @@
 #include "common-executable-path.h"
 
 bool isAllowedExecutablePath(std::string_view exePath, std::string_view expectedPath, std::string_view altPrefix) {
+    // A package upgrade replaces the binary under a running fcitx5, and the kernel then reports the
+    // old path with this suffix. Only a process started from that path can carry it.
+    constexpr std::string_view kDeletedSuffix = " (deleted)";
+    if (exePath.ends_with(kDeletedSuffix)) {
+        exePath.remove_suffix(kDeletedSuffix.size());
+    }
     if (exePath.empty() || expectedPath.empty()) {
         return false;
     }

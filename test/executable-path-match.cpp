@@ -55,5 +55,11 @@ int main() {
     // The server program name has a different basename and still matches its own store path.
     ok &= expect("/nix/store/abc-lotus/bin/fcitx5-lotus-server", kServer, kNixStore, true);
     ok &= expect("/nix/store/abc-lotus/bin/fcitx5", kServer, kNixStore, false);
+    // A package upgrade replaces the binary under a running fcitx5, and the kernel then reports the
+    // old path with " (deleted)" appended: still the expected program.
+    ok &= expect("/usr/bin/fcitx5 (deleted)", kFcitx5, "", true);
+    ok &= expect("/nix/store/abc123-fcitx5-5.1.13/bin/fcitx5 (deleted)", kFcitx5, kNixStore, true);
+    ok &= expect("/usr/bin/fcitx5x (deleted)", kFcitx5, "", false);
+    ok &= expect(" (deleted)", kFcitx5, "", false);
     return ok ? 0 : 1;
 }

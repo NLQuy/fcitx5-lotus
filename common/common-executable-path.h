@@ -19,7 +19,8 @@
 
 /**
  * @brief Checks whether a peer executable may act as the expected program.
- * @param exePath Peer executable path as reported by readlink(/proc/<pid>/exe).
+ * @param exePath Peer executable path as reported by readlink(/proc/<pid>/exe); a " (deleted)"
+ *        suffix (binary replaced by an upgrade while running) is ignored.
  * @param expectedPath Configured executable path (e.g. LOTUS_FCITX5_EXECUTABLE).
  * @param altPrefix Configured extra prefix (e.g. LOTUS_ALT_EXECUTABLE_PREFIX), may be empty.
  * @return True when the peer path is accepted.
