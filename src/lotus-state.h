@@ -22,6 +22,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <fcitx-utils/event.h>
 #include <fcitx/inputcontext.h>
 #include <memory>
 
@@ -99,7 +100,9 @@ namespace fcitx {
         friend class LotusEngine;
 
       private:
-        static constexpr size_t               MAX_BUFFERED_KEYS = 50;
+        static constexpr size_t MAX_BUFFERED_KEYS = 50;
+        /// Time a replacement may take beyond its server schedule before the watchdog ends it.
+        static constexpr uint64_t             REPLACEMENT_TIMEOUT_MARGIN_MS = 300;
 
         LotusEngine&                          engine_; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
         InputContext&                         ic_;     // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
@@ -122,6 +125,7 @@ namespace fcitx {
         bool                                  tracking_modifier_tap_ = false; ///< Selected modifier held, waiting for consecutive keyup
         bool                                  macro_skip_            = false; ///< Macro disabled for the current word
         std::chrono::steady_clock::time_point last_commit_time_;
+        std::unique_ptr<EventSourceTime>      replacementWatchdog_; ///< Ends a replacement whose echoes got lost
 
         /**
          * @brief Connects to the uinput server.
@@ -142,8 +146,9 @@ namespace fcitx {
          * @param pre_delay Delay in milliseconds before executing the keyboard operation.
          * @param interval Delay in milliseconds between consecutive injected keys.
          * @param post_delay Delay in milliseconds after completing the keyboard operation.
+         * @return True when the request was handed to the server.
          */
-        static void send_kb_msg(KbOp op, size_t count, uint32_t pre_delay, uint32_t interval, uint32_t post_delay);
+        static bool send_kb_msg(KbOp op, size_t count, uint32_t pre_delay, uint32_t interval, uint32_t post_delay);
 
         /**
          * @brief Sends backspace key events via uinput.
@@ -151,8 +156,9 @@ namespace fcitx {
          * @param pre_delay Delay in milliseconds before executing the keyboard operation.
          * @param interval Delay in milliseconds between consecutive injected keys.
          * @param post_delay Delay in milliseconds after completing the keyboard operation.
+         * @return True when the request was handed to the server.
          */
-        static void send_backspace_uinput(size_t count, uint32_t pre_delay, uint32_t interval, uint32_t post_delay);
+        static bool send_backspace_uinput(size_t count, uint32_t pre_delay, uint32_t interval, uint32_t post_delay);
 
         /**
          * @brief Asks the uinput server to select count characters with Shift+Left.
@@ -160,8 +166,9 @@ namespace fcitx {
          * @param pre_delay Delay in milliseconds before executing the keyboard operation.
          * @param interval Delay in milliseconds between consecutive injected keys.
          * @param post_delay Delay in milliseconds after completing the keyboard operation.
+         * @return True when the request was handed to the server.
          */
-        static void send_select_uinput(size_t count, uint32_t pre_delay, uint32_t interval, uint32_t post_delay);
+        static bool send_select_uinput(size_t count, uint32_t pre_delay, uint32_t interval, uint32_t post_delay);
 
         /**
          * @brief Handles the pre-dispatch guards of a key event (engine presence, shift in
@@ -270,10 +277,31 @@ namespace fcitx {
         void finishReplacement(KeyEvent& event);
 
         /**
+         * @brief Commits the pending replacement and replays the buffered keys.
+         */
+        void completeReplacement();
+
+        /**
+         * @brief Drops the pending replacement and resets the word, for a request
+         * that never reached the server or never fully came back.
+         */
+        void abandonReplacement();
+
+        /**
+         * @brief Ends a replacement whose echoes did not all come back in time.
+         *
+         * Commits it when only the trigger key is missing (the deletion
+         * happened), drops it otherwise, and replays the buffered keys.
+         */
+        void onReplacementTimeout();
+
+        /**
          * @brief Performs text replacement via uinput.
          * @param diffPart pairs of deleted part and added part
+         * @return False when the request could not reach the server; the
+         *         replacement is then dropped and the word reset.
          */
-        void performReplacement(DiffPart diffPart);
+        bool performReplacement(DiffPart diffPart);
 
         /**
          * @brief Replaces the last character, either through surrounding text or through uinput.

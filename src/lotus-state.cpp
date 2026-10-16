@@ -112,10 +112,10 @@ namespace fcitx {
         return connect_uinput_server() ? uinput_client_fd_.load(std::memory_order_acquire) : -1;
     }
 
-    void LotusState::send_kb_msg(KbOp op, size_t count, uint32_t pre_delay, uint32_t interval, uint32_t post_delay) {
+    bool LotusState::send_kb_msg(KbOp op, size_t count, uint32_t pre_delay, uint32_t interval, uint32_t post_delay) {
         if (uinput_client_fd_ < 0 && !connect_uinput_server()) {
             LOTUS_ERROR("Cannot send key request since cannot connect to uinput server");
-            return;
+            return false;
         }
 
         const KbMsg msg{.op = op, .count = count, .pre_delay = pre_delay, .interval = interval, .post_delay = post_delay};
@@ -124,19 +124,21 @@ namespace fcitx {
         if (n < 0) {
             LOTUS_WARN("Failed to send key request: " + std::string(strerror(errno)));
             FdGuard old_fd(uinput_client_fd_.exchange(-1));
-            if (connect_uinput_server()) {
-                LOTUS_INFO("Reconnected to uinput server successfully");
-                send(uinput_client_fd_, &msg, sizeof(msg), MSG_NOSIGNAL);
+            if (!connect_uinput_server()) {
+                return false;
             }
+            LOTUS_INFO("Reconnected to uinput server successfully");
+            n = send(uinput_client_fd_, &msg, sizeof(msg), MSG_NOSIGNAL);
         }
+        return n == static_cast<ssize_t>(sizeof(msg));
     }
 
-    void LotusState::send_backspace_uinput(size_t count, uint32_t pre_delay, uint32_t interval, uint32_t post_delay) {
-        send_kb_msg(KbOp::Backspace, count, pre_delay, interval, post_delay);
+    bool LotusState::send_backspace_uinput(size_t count, uint32_t pre_delay, uint32_t interval, uint32_t post_delay) {
+        return send_kb_msg(KbOp::Backspace, count, pre_delay, interval, post_delay);
     }
 
-    void LotusState::send_select_uinput(size_t count, uint32_t pre_delay, uint32_t interval, uint32_t post_delay) {
-        send_kb_msg(KbOp::Select, count, pre_delay, interval, post_delay);
+    bool LotusState::send_select_uinput(size_t count, uint32_t pre_delay, uint32_t interval, uint32_t post_delay) {
+        return send_kb_msg(KbOp::Select, count, pre_delay, interval, post_delay);
     }
 
     bool LotusState::isAutofillCertain(const SurroundingText& s) {
@@ -425,14 +427,56 @@ namespace fcitx {
     }
 
     void LotusState::finishReplacement(KeyEvent& event) {
+        if (replacementWatchdog_) {
+            replacementWatchdog_->setEnabled(false);
+        }
+        event.filterAndAccept();
+        completeReplacement();
+    }
+
+    void LotusState::completeReplacement() {
         std::u32string commitText = std::move(pending_commit_string_);
         pending_commit_string_.clear();
 
         expected_backspaces_     = 0;
         current_backspace_count_ = 0;
-        event.filterAndAccept();
         is_deleting_.store(false, std::memory_order_release);
         replayBufferedKeys(std::move(commitText));
+    }
+
+    void LotusState::abandonReplacement() {
+        is_deleting_.store(false, std::memory_order_release);
+        expected_backspaces_     = 0;
+        current_backspace_count_ = 0;
+        pending_commit_string_.clear();
+        hasHistory_ = false;
+        (*lotusEngine_).reset();
+        oldPreBuffer_.clear();
+    }
+
+    void LotusState::onReplacementTimeout() {
+        if (!is_deleting_.load(std::memory_order_acquire) || expected_backspaces_ == 0) {
+            return;
+        }
+        if (!ic_.hasFocus()) {
+            // Focus moved on and activate() released is_deleting_ for the new
+            // context, which may be replacing by now: only forget our own state.
+            expected_backspaces_     = 0;
+            current_backspace_count_ = 0;
+            pending_commit_string_.clear();
+            buffered_keys_.clear();
+            return;
+        }
+        LOTUS_WARN("Replacement timed out after " + std::to_string(current_backspace_count_) + " of " + std::to_string(expected_backspaces_) + " echoes");
+        if (current_backspace_count_ + 1 >= expected_backspaces_) {
+            // Only the trigger key is missing, so the deletion happened.
+            completeReplacement();
+            return;
+        }
+        // The deletion did not complete and the app text is unknown: drop the
+        // replacement and replay the waiting keys as a new word.
+        abandonReplacement();
+        replayBufferedKeys();
     }
 
     bool LotusState::handleUInputKeyPress(KeyEvent& event, KeySym currentSym) {
@@ -455,7 +499,7 @@ namespace fcitx {
         return true;
     }
 
-    void LotusState::performReplacement(DiffPart diffPart) {
+    bool LotusState::performReplacement(DiffPart diffPart) {
         const int  commitMs = clampDelay(appRuleSetting_.commitInterval > 0 ? appRuleSetting_.commitInterval : *engine_.config().defaultCommitInterval);
         const auto interval =
             static_cast<uint32_t>(clampDelay(appRuleSetting_.backspaceInterval > 0 ? appRuleSetting_.backspaceInterval : *engine_.config().defaultBackspaceInterval));
@@ -494,13 +538,33 @@ namespace fcitx {
         // Select mode: the uinput server selects with Shift+Left instead. The
         // trigger-key compensation above still applies because the last echoed
         // Left is swallowed; autofill compensation does not, see above.
-        if (realMode == LotusMode::Select) {
-            send_select_uinput(expected_backspaces_, pre_delay, interval, post_delay);
-            LOTUS_INFO("Send select of " + std::to_string(expected_backspaces_) + " characters");
-            return;
+        const bool select = realMode == LotusMode::Select;
+        if (!(select ? send_select_uinput(expected_backspaces_, pre_delay, interval, post_delay) : send_backspace_uinput(expected_backspaces_, pre_delay, interval, post_delay))) {
+            LOTUS_WARN("Replacement request did not reach the uinput server, dropping it");
+            abandonReplacement();
+            return false;
         }
-        send_backspace_uinput(expected_backspaces_, pre_delay, interval, post_delay);
-        LOTUS_INFO("Send " + std::to_string(expected_backspaces_) + " backspaces");
+        if (select) {
+            LOTUS_INFO("Send select of " + std::to_string(expected_backspaces_) + " characters");
+        } else {
+            LOTUS_INFO("Send " + std::to_string(expected_backspaces_) + " backspaces");
+        }
+
+        // A lost echo must not hold every later key: give up once the request
+        // had ample time to come back.
+        const uint64_t timeoutMs = pre_delay + (expected_backspaces_ * interval) + post_delay + REPLACEMENT_TIMEOUT_MARGIN_MS;
+        const uint64_t deadline  = now(CLOCK_MONOTONIC) + (timeoutMs * 1000);
+        if (replacementWatchdog_) {
+            // Re-armed in place: the source may be the one firing right now.
+            replacementWatchdog_->setTime(deadline);
+            replacementWatchdog_->setOneShot();
+        } else {
+            replacementWatchdog_ = engine_.instance()->eventLoop().addTimeEvent(CLOCK_MONOTONIC, deadline, 0, [this](EventSourceTime*, uint64_t) {
+                onReplacementTimeout();
+                return true;
+            });
+        }
+        return true;
     }
 
     bool LotusState::checkForwardSpecialKey(KeyEvent& keyEvent, KeySym& currentSym) {
@@ -575,8 +639,9 @@ namespace fcitx {
         if (realMode == LotusMode::SurroundingText) {
             ic_.deleteSurroundingText(-1, 1);
             lotus::fcitx_text::commit(&ic_, diffPart.addedPart, last_commit_time_);
-        } else { // Uinput, Smooth, Preedit, etc.
-            performReplacement(diffPart);
+        } else if (!performReplacement(diffPart)) { // Uinput, Smooth, Preedit, etc.
+            // The swallowed key repeats the character it would have replaced.
+            lotus::fcitx_text::commit(&ic_, diffPart.deletedPart, last_commit_time_);
         }
         LOTUS_INFO(logMsg);
     }
@@ -625,8 +690,10 @@ namespace fcitx {
             DiffPart diffPart = compareAndSplitU32(oldPreBuffer_, commitStr);
 
             if (!diffPart.deletedPart.empty()) {
-                performReplacement(diffPart);
-                keyEvent.filterAndAccept();
+                // Without the server the key reaches the app as typed.
+                if (performReplacement(diffPart)) {
+                    keyEvent.filterAndAccept();
+                }
             } else {
                 bool wasAutoCapitalized = (currentSym != keyEvent.rawKey().sym());
                 if (!diffPart.addedPart.empty() && (keyText != diffPart.addedPart || wasAutoCapitalized)) {
@@ -694,9 +761,11 @@ namespace fcitx {
                 is_deleting_.store(false, std::memory_order_release);
             }
 
-            keyEvent.filterAndAccept();
-            performReplacement(diffPart);
-            oldPreBuffer_ = preeditStr;
+            // Without the server the key reaches the app as typed.
+            if (performReplacement(diffPart)) {
+                keyEvent.filterAndAccept();
+                oldPreBuffer_ = preeditStr;
+            }
         }
     }
 
@@ -884,7 +953,10 @@ namespace fcitx {
                 LOTUS_INFO("Macro expansion: '" + lotus::utf8::encode(oldPreBuffer_) + "' -> '" + lotus::utf8::encode(commitStr) + "'");
                 // Try uinput replacement first, fallback to deleteSurroundingText, then plain commit
                 if (uinput_client_fd_ >= 0 && !oldPreBuffer_.empty()) {
-                    performReplacement({.deletedPart = oldPreBuffer_, .addedPart = commitStr});
+                    if (!performReplacement({.deletedPart = oldPreBuffer_, .addedPart = commitStr})) {
+                        // The request did not reach the server: leave the trigger key to the app.
+                        return;
+                    }
                 } else if (ic_.capabilityFlags().test(CapabilityFlag::SurroundingText)) {
                     const auto& surrounding = ic_.surroundingText();
                     if (surrounding.isValid()) {
@@ -1293,18 +1365,22 @@ namespace fcitx {
                 DiffPart diffPart = compareAndSplitU32(oldPreBuffer_, commitStr);
 
                 if (!diffPart.deletedPart.empty()) {
-                    // Re-buffer remaining keys for next replay cycle.
-                    for (size_t j = i + 1; j < keys.size(); ++j) {
-                        if (buffered_keys_.size() < MAX_BUFFERED_KEYS) {
-                            buffered_keys_.push_back(keys[j]);
-                        }
-                    }
                     flushCommit();
-                    performReplacement(diffPart);
-                    hasHistory_ = false;
-                    (*lotusEngine_).reset();
-                    oldPreBuffer_.clear();
-                    return;
+                    if (performReplacement(diffPart)) {
+                        // Re-buffer remaining keys for next replay cycle.
+                        for (size_t j = i + 1; j < keys.size(); ++j) {
+                            if (buffered_keys_.size() < MAX_BUFFERED_KEYS) {
+                                buffered_keys_.push_back(keys[j]);
+                            }
+                        }
+                        hasHistory_ = false;
+                        (*lotusEngine_).reset();
+                        oldPreBuffer_.clear();
+                        return;
+                    }
+                    // Without the server the key goes out as typed.
+                    pendingCommit += keyText;
+                    continue;
                 }
                 pendingCommit += diffPart.addedPart;
 
@@ -1340,16 +1416,19 @@ namespace fcitx {
                     is_deleting_.store(false, std::memory_order_release);
                 }
 
-                // Re-buffer remaining keys for next replay cycle.
-                for (size_t j = i + 1; j < keys.size(); ++j) {
-                    if (buffered_keys_.size() < MAX_BUFFERED_KEYS) {
-                        buffered_keys_.push_back(keys[j]);
-                    }
-                }
                 flushCommit();
-                performReplacement(diffPart);
-                oldPreBuffer_ = preeditStr;
-                return;
+                if (performReplacement(diffPart)) {
+                    // Re-buffer remaining keys for next replay cycle.
+                    for (size_t j = i + 1; j < keys.size(); ++j) {
+                        if (buffered_keys_.size() < MAX_BUFFERED_KEYS) {
+                            buffered_keys_.push_back(keys[j]);
+                        }
+                    }
+                    oldPreBuffer_ = preeditStr;
+                    return;
+                }
+                // Without the server the key goes out as typed.
+                pendingCommit += keyText;
             }
         }
         flushCommit();
