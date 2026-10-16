@@ -428,12 +428,11 @@ namespace fcitx {
         std::u32string commitText = std::move(pending_commit_string_);
         pending_commit_string_.clear();
 
-        lotus::fcitx_text::commit(&ic_, commitText, last_commit_time_);
         expected_backspaces_     = 0;
         current_backspace_count_ = 0;
         event.filterAndAccept();
         is_deleting_.store(false, std::memory_order_release);
-        replayBufferedKeys();
+        replayBufferedKeys(std::move(commitText));
     }
 
     bool LotusState::handleUInputKeyPress(KeyEvent& event, KeySym currentSym) {
@@ -1253,9 +1252,19 @@ namespace fcitx {
         return !hasHistory_;
     }
 
-    void LotusState::replayBufferedKeys() {
+    void LotusState::replayBufferedKeys(std::u32string pendingCommit) {
         LOTUS_INFO("Starting replay buffered keys");
+        // Wayland apps behind GNOME Shell (text-input-v3) double-buffer
+        // commit_string until the next done event, so commits sent back to back
+        // keep only the last one ("lâu" -> "lu"). The finished replacement and
+        // the text the replay adds go out as one commit, flushed before a
+        // replayed key starts a new replacement.
+        const auto flushCommit = [this, &pendingCommit] {
+            lotus::fcitx_text::commit(&ic_, pendingCommit, last_commit_time_);
+            pendingCommit.clear();
+        };
         if (buffered_keys_.empty()) {
+            flushCommit();
             return;
         }
         auto keys = std::move(buffered_keys_);
@@ -1282,15 +1291,14 @@ namespace fcitx {
                             buffered_keys_.push_back(keys[j]);
                         }
                     }
+                    flushCommit();
                     performReplacement(diffPart);
                     hasHistory_ = false;
                     (*lotusEngine_).reset();
                     oldPreBuffer_.clear();
                     return;
                 }
-                if (!diffPart.addedPart.empty()) {
-                    lotus::fcitx_text::commit(&ic_, diffPart.addedPart, last_commit_time_);
-                }
+                pendingCommit += diffPart.addedPart;
 
                 hasHistory_ = false;
                 (*lotusEngine_).reset();
@@ -1299,7 +1307,7 @@ namespace fcitx {
             }
 
             if (!processed) {
-                lotus::fcitx_text::commit(&ic_, keyText, last_commit_time_);
+                pendingCommit += keyText;
                 continue;
             }
 
@@ -1311,12 +1319,12 @@ namespace fcitx {
             DiffPart             diffPart = compareAndSplitU32(oldPreBuffer_, preeditStr);
             if (diffPart.deletedPart.empty()) {
                 if (!diffPart.addedPart.empty()) {
-                    lotus::fcitx_text::commit(&ic_, diffPart.addedPart, last_commit_time_);
+                    pendingCommit += diffPart.addedPart;
                     oldPreBuffer_ = preeditStr;
                 }
             } else {
                 if (uinput_client_fd_ < 0) {
-                    lotus::fcitx_text::commit(&ic_, keyText, last_commit_time_);
+                    pendingCommit += keyText;
                     continue;
                 }
 
@@ -1330,11 +1338,13 @@ namespace fcitx {
                         buffered_keys_.push_back(keys[j]);
                     }
                 }
+                flushCommit();
                 performReplacement(diffPart);
                 oldPreBuffer_ = preeditStr;
                 return;
             }
         }
+        flushCommit();
         LOTUS_INFO("Replay buffered keys done");
     }
 

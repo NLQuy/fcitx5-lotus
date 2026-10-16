@@ -261,9 +261,9 @@ namespace fcitx {
         /**
          * @brief Completes an in-flight replacement after all echoed events arrived.
          *
-         * Shared tail of the BackSpace and Shift+Left echo handlers: waits for the
-         * app to settle, commits the pending replacement string, resets the
-         * replacement state, swallows the final echo and replays buffered keys.
+         * Shared tail of the BackSpace and Shift+Left echo handlers: resets the
+         * replacement state, swallows the final echo and replays buffered keys,
+         * committing the pending replacement string together with them.
          *
          * @param event The key event of the final echoed key.
          */
@@ -355,8 +355,11 @@ namespace fcitx {
          * When is_deleting_ is true, non-special keystrokes are buffered
          * instead of being discarded. This method replays them after the
          * replacement completes.
+         *
+         * @param pendingCommit Text of the finished replacement; it goes out in
+         *        the same commit as the text the replay adds.
          */
-        void replayBufferedKeys();
+        void replayBufferedKeys(std::u32string pendingCommit = {});
 
         /**
          * @brief Checks if the key symbol matches the configured macro-skip modifier.
