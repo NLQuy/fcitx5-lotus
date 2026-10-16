@@ -295,6 +295,14 @@ namespace fcitx {
             return *emojiLoader_;
         }
 
+        /**
+         * @brief Handles a mouse click reported by the uinput server.
+         *
+         * A click moves the caret, so the word buffers of the focused contexts
+         * are dropped, together with a replacement still waiting for its echoes.
+         */
+        void handleMouseClick();
+
       private:
         Instance&                                            instance_;
         lotusConfig                                          config_;

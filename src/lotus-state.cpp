@@ -454,6 +454,18 @@ namespace fcitx {
         oldPreBuffer_.clear();
     }
 
+    void LotusState::cancelReplacement() {
+        if (!is_deleting_.load(std::memory_order_acquire) || expected_backspaces_ == 0) {
+            return;
+        }
+        LOTUS_INFO("Replacement cancelled, the caret moved");
+        if (replacementWatchdog_) {
+            replacementWatchdog_->setEnabled(false);
+        }
+        buffered_keys_.clear();
+        abandonReplacement();
+    }
+
     void LotusState::onReplacementTimeout() {
         if (!is_deleting_.load(std::memory_order_acquire) || expected_backspaces_ == 0) {
             return;

@@ -288,6 +288,12 @@ namespace fcitx {
         void abandonReplacement();
 
         /**
+         * @brief Drops a replacement still waiting for its echoes, and the keys
+         * typed meanwhile, because the caret moved (a click).
+         */
+        void cancelReplacement();
+
+        /**
          * @brief Ends a replacement whose echoes did not all come back in time.
          *
          * Commits it when only the trigger key is missing (the deletion

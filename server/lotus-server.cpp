@@ -288,7 +288,17 @@ int main(int argc, char* argv[]) {
     uint32_t                              current_interval   = 5;     ///< ms between injected keys within one request
     std::chrono::steady_clock::time_point next_key_due{};             ///< when the next paced key is due
 
-    struct sigaction                      sa{};
+    // Drops every key still queued and releases a Shift held for a selection.
+    const auto abortPending = [&] {
+        if (shift_held) {
+            uinput.send_shift_up(); // never leave Shift stuck down
+            shift_held = false;
+        }
+        pending_backspaces = 0;
+        pending_selects    = 0;
+    };
+
+    struct sigaction sa{};
     sa.sa_handler = signal_handler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0;
@@ -351,6 +361,7 @@ int main(int argc, char* argv[]) {
 
                 if (peer.has_value()) {
                     LotusLogger::instance().info("Fcitx5 connected to keyboard socket (PID: " + std::to_string(*peer) + ")");
+                    abortPending(); // keys queued for a previous fcitx5 are not this one's
                     kb_client_fd.reset(client_fd);
                     fds[kKbClientIndex].fd = kb_client_fd.get();
                 } else {
@@ -366,18 +377,20 @@ int main(int argc, char* argv[]) {
             ssize_t n = recv(fds[kKbClientIndex].fd, &msg, sizeof(msg), 0);
             if (n <= 0) {
                 LotusLogger::instance().warn("Keyboard client disconnected or connection error");
-                if (shift_held) {
-                    uinput.send_shift_up(); // never leave Shift stuck down
-                    shift_held = false;
-                }
-                pending_selects = 0;
+                abortPending();
                 kb_client_fd.reset(-1);
                 fds[kKbClientIndex].fd = -1;
             } else if (std::cmp_not_equal(n, sizeof(KbMsg)) && std::cmp_not_equal(n, sizeof(int32_t))) {
                 LotusLogger::instance().warn("Malformed keyboard message (" + std::to_string(n) + " bytes)");
+            } else if (msg.op == KbOp::Cancel) {
+                abortPending();
             } else {
                 current_interval = msg.interval > 0 ? std::min<uint32_t>(msg.interval, 1000) : 5;
-                if (msg.count > 0 && msg.op == KbOp::Select) {
+                if (msg.count == 1 && msg.op == KbOp::Select) {
+                    // Shift is released before the last key of a selection, so a
+                    // selection of one key would leave it held.
+                    LotusLogger::instance().warn("Ignoring a selection of a single key");
+                } else if (msg.count > 0 && msg.op == KbOp::Select) {
                     if (msg.pre_delay > 0) {
                         std::this_thread::sleep_for(std::chrono::milliseconds(msg.pre_delay));
                     }
@@ -434,8 +447,12 @@ int main(int argc, char* argv[]) {
             switch (libinput_event_get_type(event.get())) {
                 case LIBINPUT_EVENT_POINTER_BUTTON: {
                     struct libinput_event_pointer* pointer = libinput_event_get_pointer_event(event.get());
-                    if (libinput_event_pointer_get_button_state(pointer) == LIBINPUT_BUTTON_STATE_PRESSED && addon_fd.is_valid() &&
-                        send(addon_fd.get(), "C", 1, MSG_NOSIGNAL | MSG_DONTWAIT) <= 0) {
+                    if (libinput_event_pointer_get_button_state(pointer) != LIBINPUT_BUTTON_STATE_PRESSED) {
+                        break;
+                    }
+                    // A click moves the caret: keys still queued would land at the new spot.
+                    abortPending();
+                    if (addon_fd.is_valid() && send(addon_fd.get(), "C", 1, MSG_NOSIGNAL | MSG_DONTWAIT) <= 0) {
                         LotusLogger::instance().warn("Failed to send to mouse flag client, closing connection");
                         addon_fd.reset(-1);
                     }

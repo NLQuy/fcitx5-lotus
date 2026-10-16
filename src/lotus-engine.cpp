@@ -516,6 +516,10 @@ namespace fcitx {
         state->deletionInterruptedAt_ = 0;
 
         if (!resumeReplacement) {
+            if (is_deleting_.load()) {
+                // Keys the server still queues for the old window must not reach this one.
+                LotusState::send_kb_msg(KbOp::Cancel, 0, 0, 0, 0);
+            }
             is_deleting_.store(false);
         }
 
@@ -1297,16 +1301,22 @@ namespace fcitx {
 
             if (n >= 1 && buf[0] == 'C') {
                 LOTUS_DEBUG("Mouse click detected from server. Resetting.....");
-                g_mouse_clicked.store(true, std::memory_order_release);
-                instance_.inputContextManager().foreachFocused([this](InputContext* ic) {
-                    if (ic) {
-                        auto* state = ic->propertyFor(&factory_);
-                        if (state) {
-                            state->clearAllBuffers();
-                        }
-                    }
-                    return true;
-                });
+                handleMouseClick();
+            }
+            return true;
+        });
+    }
+
+    void LotusEngine::handleMouseClick() {
+        g_mouse_clicked.store(true, std::memory_order_release);
+        instance_.inputContextManager().foreachFocused([this](InputContext* ic) {
+            if (ic) {
+                auto* state = ic->propertyFor(&factory_);
+                if (state) {
+                    // The server already dropped its queued keys when it saw the click.
+                    state->cancelReplacement();
+                    state->clearAllBuffers();
+                }
             }
             return true;
         });
