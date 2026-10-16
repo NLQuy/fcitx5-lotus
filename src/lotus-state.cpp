@@ -442,8 +442,9 @@ namespace fcitx {
         // In Select mode the uinput server emits Shift+Left, so the echoed Left
         // presses are the selection signal. The final one is swallowed in
         // finishReplacement so the app only sees the count it should select.
-        const bool isSelectEcho = realMode == LotusMode::Select && currentSym == FcitxKey_Left;
-        if (!isBackspace(currentSym) && !isSelectEcho) {
+        // The other modes echo BackSpace.
+        const bool isEcho = realMode == LotusMode::Select ? currentSym == FcitxKey_Left : isBackspace(currentSym);
+        if (!isEcho) {
             return false;
         }
         current_backspace_count_ += 1;
@@ -1036,7 +1037,9 @@ namespace fcitx {
 
     bool LotusState::handleKeyWhileDeleting(KeyEvent& keyEvent, KeySym currentSym) {
         if (is_deleting_.load(std::memory_order_acquire)) {
-            if (isBackspace(currentSym)) {
+            // Select mode echoes Shift+Left and Delete, so a BackSpace there comes
+            // from the user and waits like any other key.
+            if (realMode != LotusMode::Select && isBackspace(currentSym)) {
                 if (realtextLen.load(std::memory_order_acquire) > 0)
                     realtextLen.fetch_sub(1, std::memory_order_acq_rel);
                 if (handleUInputKeyPress(keyEvent, currentSym)) {
