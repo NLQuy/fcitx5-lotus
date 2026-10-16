@@ -9,8 +9,8 @@
 #include "lotus-abstract-socket.h"
 #include "lotus-server.h"
 #include "lotus-logger.h"
-#include "common-executable-path.h"
 #include "common-fd-guard.h"
+#include "common-peer-check.h"
 #include "common-protocol.h"
 #include "common-socket-name.h"
 
@@ -19,6 +19,8 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <span>
 #include <thread>
 #include <utility>
@@ -203,17 +205,13 @@ std::optional<pid_t> authorizePeer(int fd, uid_t expectedUid, std::string_view s
         return std::nullopt;
     }
 
-    const std::string          exe_link = "/proc/" + std::to_string(cred.pid) + "/exe";
-    std::array<char, PATH_MAX> exe_path{};
-    const ssize_t              length = ::readlink(exe_link.c_str(), exe_path.data(), exe_path.size() - 1);
-    if (length <= 0) {
-        LotusLogger::instance().warn("Failed to resolve the peer executable for " + std::string(socketLabel));
-        return std::nullopt;
-    }
-
-    const std::string_view exe(exe_path.data(), static_cast<std::size_t>(length));
-    if (!isAllowedExecutablePath(exe, LOTUS_FCITX5_EXECUTABLE, LOTUS_ALT_EXECUTABLE_PREFIX)) {
-        LotusLogger::instance().warn("Unauthorized executable connection attempt to " + std::string(socketLabel) + " from: " + std::string(exe));
+    // Sandboxed apps (Flatpak, bubblewrap) run as the same user but in a PID
+    // namespace of their own: keep them away from the virtual keyboard. Unlike
+    // /proc/<pid>/exe, the status file needs no ptrace access to the peer.
+    std::ifstream     status("/proc/" + std::to_string(cred.pid) + "/status");
+    const std::string content{std::istreambuf_iterator<char>(status), std::istreambuf_iterator<char>()};
+    if (content.empty() || isInNestedPidNamespace(content)) {
+        LotusLogger::instance().warn("Sandboxed or vanished peer rejected on " + std::string(socketLabel) + " (PID: " + std::to_string(cred.pid) + ")");
         return std::nullopt;
     }
     return cred.pid;

@@ -49,8 +49,6 @@ endif()
 fcitx5_add_i18n_definition()
 
 # Absolute paths that every packaging has to override.
-set(LOTUS_FCITX5_EXECUTABLE "/usr/bin/fcitx5" CACHE STRING
-    "fcitx5 executable allowed to connect to the Lotus uinput/mouse sockets")
 set(LOTUS_SERVER_EXECUTABLE "/usr/bin/fcitx5-lotus-server" CACHE STRING
     "fcitx5-lotus-server executable allowed to connect to the Lotus mouse socket")
 set(LOTUS_ALT_EXECUTABLE_PREFIX "" CACHE STRING

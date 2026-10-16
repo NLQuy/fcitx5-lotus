@@ -7,8 +7,8 @@ Wants=systemd-modules-load.service
 User=@LOTUS_UINPUT_PROXY_USER@
 Group=input
 
-CapabilityBoundingSet=CAP_SYS_NICE CAP_SYS_PTRACE
-AmbientCapabilities=CAP_SYS_NICE CAP_SYS_PTRACE
+CapabilityBoundingSet=CAP_SYS_NICE
+AmbientCapabilities=CAP_SYS_NICE
 
 Type=simple
 

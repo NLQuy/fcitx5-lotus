@@ -190,8 +190,8 @@ void close_restricted(int fd, void* user_data);
 /**
  * @brief Authorizes a new client of one of the server sockets.
  *
- * Fetches the peer credentials, verifies the peer UID and that the peer
- * executable is the fcitx5 binary that is allowed to talk to the server.
+ * Fetches the peer credentials, verifies the peer UID and that the peer does
+ * not run in a nested PID namespace (a sandboxed app of the same user).
  *
  * @param fd Accepted client socket.
  * @param expectedUid UID the server was started for.

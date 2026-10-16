@@ -119,6 +119,11 @@ add_lotus_headless_test(emoji_history_page_navigation
 add_lotus_unit_test(numeric_macro_case_preservation numeric_macro_case
     numeric-macro-case-preservation.cpp "unit;macro")
 
+add_executable(peer_check peer-check.cpp)
+target_link_libraries(peer_check PRIVATE lotus_common_peer_check)
+add_test(NAME peer_check COMMAND peer_check)
+set_tests_properties(peer_check PROPERTIES LABELS "unit;security" TIMEOUT 20)
+
 add_executable(executable_path_match
     executable-path-match.cpp
 )
