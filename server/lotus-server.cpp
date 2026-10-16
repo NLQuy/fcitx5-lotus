@@ -279,15 +279,16 @@ int main(int argc, char* argv[]) {
         },
     };
 
-    FdGuard          addon_fd;
-    FdGuard          kb_client_fd;
-    size_t           pending_backspaces = 0;
-    size_t           pending_selects    = 0;     ///< remaining Shift+Left events to pace out
-    bool             shift_held         = false; ///< Shift pressed for an in-flight selection
-    uint32_t         current_post_delay = 0;     ///< stores post_delay from KbMsg
-    uint32_t         current_interval   = 5;     ///< ms between injected keys within one request
+    FdGuard                               addon_fd;
+    FdGuard                               kb_client_fd;
+    size_t                                pending_backspaces = 0;
+    size_t                                pending_selects    = 0;     ///< remaining Shift+Left events to pace out
+    bool                                  shift_held         = false; ///< Shift pressed for an in-flight selection
+    uint32_t                              current_post_delay = 0;     ///< stores post_delay from KbMsg
+    uint32_t                              current_interval   = 5;     ///< ms between injected keys within one request
+    std::chrono::steady_clock::time_point next_key_due{};             ///< when the next paced key is due
 
-    struct sigaction sa{};
+    struct sigaction                      sa{};
     sa.sa_handler = signal_handler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0;
@@ -297,7 +298,8 @@ int main(int argc, char* argv[]) {
     while (g_running.load(std::memory_order_acquire)) {
         int poll_timeout = -1;
         if (pending_backspaces > 0 || pending_selects > 0) {
-            poll_timeout = static_cast<int>(current_interval);
+            const auto wait = std::chrono::ceil<std::chrono::milliseconds>(next_key_due - std::chrono::steady_clock::now()).count();
+            poll_timeout    = static_cast<int>(std::max<std::chrono::milliseconds::rep>(wait, 0));
         }
         int ret = poll(fds.data(), fds.size(), poll_timeout);
 
@@ -308,7 +310,9 @@ int main(int argc, char* argv[]) {
             break;
         }
 
-        if (ret == 0) {
+        // Paced keys follow absolute deadlines: typing, pointer motion and
+        // socket traffic wake poll() too and must not push the next key back.
+        if ((pending_backspaces > 0 || pending_selects > 0) && std::chrono::steady_clock::now() >= next_key_due) {
             if (pending_backspaces > 0) {
                 if (pending_backspaces == 1 && current_post_delay > 0) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(current_post_delay));
@@ -334,6 +338,7 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
+            next_key_due = std::chrono::steady_clock::now() + std::chrono::milliseconds(current_interval);
         }
 
         libinput_dispatch(li_ctx.get_li());
@@ -384,6 +389,7 @@ int main(int argc, char* argv[]) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(current_interval));
                     uinput.send_left();
                     pending_selects += msg.count - 1;
+                    next_key_due = std::chrono::steady_clock::now() + std::chrono::milliseconds(current_interval);
 
                 } else if (msg.count > 0 && msg.op == KbOp::Backspace) {
                     if (msg.pre_delay > 0) {
@@ -398,6 +404,7 @@ int main(int argc, char* argv[]) {
                     }
                     pending_backspaces += msg.count - 1;
                     uinput.send_backspace();
+                    next_key_due = std::chrono::steady_clock::now() + std::chrono::milliseconds(current_interval);
                 } else if (msg.count > 0) {
                     LotusLogger::instance().warn("Unknown keyboard message op: " + std::to_string(static_cast<int>(msg.op)));
                 }
