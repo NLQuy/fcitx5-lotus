@@ -48,11 +48,9 @@ else()
 endif()
 fcitx5_add_i18n_definition()
 
-# Absolute paths that every packaging has to override.
-set(LOTUS_SERVER_EXECUTABLE "/usr/bin/fcitx5-lotus-server" CACHE STRING
-    "fcitx5-lotus-server executable allowed to connect to the Lotus mouse socket")
-set(LOTUS_ALT_EXECUTABLE_PREFIX "" CACHE STRING
-    "Additional prefix whose <prefix>*bin/<name> executables are accepted too (NixOS: /nix/store/)")
+# Settings that packagings may have to override.
+set(LOTUS_UINPUT_PROXY_USER "uinput_proxy" CACHE STRING
+    "System user the uinput server runs as: granted rw ACL on /dev/uinput, and the only user the addon trusts on the server sockets")
 set(LOTUS_SETFACL_EXECUTABLE "/usr/bin/setfacl" CACHE FILEPATH
     "setfacl used by the udev rule and the service units")
 set(LOTUS_VERSION_SUFFIX "" CACHE STRING

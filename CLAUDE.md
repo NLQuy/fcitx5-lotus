@@ -50,7 +50,7 @@ One CMake tree builds four deliverables:
 | `server/` | `fcitx5-lotus-server` | Helper that injects keys through uinput and reports mouse clicks |
 | `settings-gui/` | `fcitx5-lotus-settings` (installed Python app) | QtPy settings UI that talks to fcitx5 over D-Bus |
 
-`common/` holds code shared by the addon and the server: the wire protocol (`KbMsg`/`KbOp`), socket naming, the peer executable check, and `FdGuard`. The server must not link the addon core, so keep `common/` header-only apart from the small `lotus_common_executable_path` object library.
+`common/` holds code shared by the addon and the server: the wire protocol (`KbMsg`/`KbOp`), socket naming, the socket peer checks, and `FdGuard`. The server must not link the addon core, so keep `common/` header-only apart from the small `lotus_common_peer_check` object library.
 
 ### Engine (`lotus/`)
 
@@ -82,11 +82,10 @@ One CMake tree builds four deliverables:
 - Two `SOCK_SEQPACKET` sockets live in the abstract namespace. `LOTUS_SOCKET_NAMESPACE` overrides the `<user>` part of their names.
   - `lotussocket-<user>-kb_socket`: the addon sends `KbMsg` requests (backspace or select, a count, and pre/interval/post delays) to the server.
   - `lotussocket-<user>-mouse_socket`: the server sends one byte on every mouse button press, and the addon then drops its stale buffers.
-- Peer checks:
-  - The server accepts a client only if it has the target user's UID and its `/proc/<pid>/exe` matches `LOTUS_FCITX5_EXECUTABLE`.
-  - The addon accepts the mouse-socket peer only if its `/proc/<pid>/cmdline` (argv[0]) matches `LOTUS_SERVER_EXECUTABLE`.
-  - Both checks go through `isAllowedExecutablePath`, which also accepts binaries under `LOTUS_ALT_EXECUTABLE_PREFIX` (`/nix/store/` on NixOS).
-- These paths, plus `LOTUS_SETFACL_EXECUTABLE` and `LOTUS_UINPUT_PROXY_USER`, are CMake cache variables that packagers override. Don't hard-code them.
+- Peer checks (`common/common-peer-check.*`) are based on `SO_PEERCRED`, so the server needs no ptrace capability:
+  - The server accepts a client only if it runs as the target user and not inside a nested PID namespace (the `NSpid` line of `/proc/<pid>/status`), which keeps sandboxed apps out.
+  - The addon trusts a server socket only if the peer is `LOTUS_UINPUT_PROXY_USER` or root. Under `LOTUS_SOCKET_NAMESPACE` (tests), its own user is accepted too.
+- `LOTUS_UINPUT_PROXY_USER` and `LOTUS_SETFACL_EXECUTABLE` are CMake cache variables that packagers override. Don't hard-code them.
 
 ### Tests (`test/`)
 

@@ -1278,9 +1278,7 @@ namespace fcitx {
             return;
         }
 
-        std::string peer_exe_path;
-        if (!authenticateMouseSocketPeer(sock.get(), peer_exe_path)) {
-            LOTUS_WARN("Unauthorized connection attempt from: " + peer_exe_path);
+        if (!authenticateServerPeer(sock.get())) {
             return;
         }
 

@@ -9,8 +9,7 @@ target_include_directories(lotus_core_objects PRIVATE
 )
 target_compile_definitions(lotus_core_objects PRIVATE
     FCITX5_LOTUS_SETTINGS_PATH="${CMAKE_INSTALL_FULL_BINDIR}/fcitx5-lotus-settings"
-    LOTUS_SERVER_EXECUTABLE="${LOTUS_SERVER_EXECUTABLE}"
-    LOTUS_ALT_EXECUTABLE_PREFIX="${LOTUS_ALT_EXECUTABLE_PREFIX}"
+    LOTUS_UINPUT_PROXY_USER="${LOTUS_UINPUT_PROXY_USER}"
 )
 target_link_libraries(lotus_core_objects PRIVATE
     Fcitx5::Core
@@ -49,7 +48,7 @@ add_library(lotus MODULE lotus.cpp
 set_target_properties(lotus PROPERTIES OUTPUT_NAME "lotus")
 set_target_properties(lotus PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(lotus
-        lotus_common_executable_path
+        lotus_common_peer_check
         Fcitx5::Core
         Fcitx5::Config
   Fcitx5::Module::Emoji

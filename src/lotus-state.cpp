@@ -11,6 +11,7 @@
 #include "lotus-engine.h"
 #include "lotus-candidates.h"
 #include "lotus-fcitx-text.h"
+#include "lotus-monitor.h"
 #include "lotus-utils.h"
 
 #include "input_method.h"
@@ -100,6 +101,9 @@ namespace fcitx {
         }
 
         if (connect(current_fd.get(), reinterpret_cast<struct sockaddr*>(&addr), len) == 0) {
+            if (!authenticateServerPeer(current_fd.get())) {
+                return false;
+            }
             uinput_client_fd_ = current_fd.release();
             return true;
         }

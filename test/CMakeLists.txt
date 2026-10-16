@@ -7,7 +7,7 @@ target_include_directories(lotus_test_core PUBLIC
     ${PROJECT_SOURCE_DIR}/src
 )
 target_link_libraries(lotus_test_core PUBLIC
-    lotus_common_executable_path
+    lotus_common_peer_check
     Fcitx5::Core
     Fcitx5::Config
     Fcitx5::Module::Emoji
@@ -124,12 +124,3 @@ target_link_libraries(peer_check PRIVATE lotus_common_peer_check)
 add_test(NAME peer_check COMMAND peer_check)
 set_tests_properties(peer_check PROPERTIES LABELS "unit;security" TIMEOUT 20)
 
-add_executable(executable_path_match
-    executable-path-match.cpp
-)
-target_link_libraries(executable_path_match PRIVATE lotus_common_executable_path)
-add_test(NAME executable_path_match COMMAND executable_path_match)
-set_tests_properties(executable_path_match PROPERTIES
-    LABELS "unit;packaging"
-    TIMEOUT 20
-)

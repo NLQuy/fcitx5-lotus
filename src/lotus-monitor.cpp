@@ -5,48 +5,48 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  */
-#include "common-executable-path.h"
-#include "common-fd-guard.h"
+#include "common-peer-check.h"
+#include "common-socket-name.h"
 #include "lotus-monitor.h"
 #include "lotus-utils.h"
 
-#include <array>
-#include <cstdio>
+#include <cerrno>
+#include <cstddef>
 #include <cstring>
 #include <string>
+#include <vector>
 
-#include <fcntl.h>
+#include <pwd.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <climits> // IWYU pragma: keep
 
-bool authenticateMouseSocketPeer(int sock, std::string& out_exe_path) {
+namespace {
+
+    // UID of the user the uinput server runs as, or (uid_t)-1 when that user does not exist.
+    uid_t proxyUid() {
+        const long        bufSize = sysconf(_SC_GETPW_R_SIZE_MAX);
+        std::vector<char> buffer(bufSize > 0 ? static_cast<std::size_t>(bufSize) : 16384U);
+        struct passwd     pwd{};
+        struct passwd*    result = nullptr;
+        if (getpwnam_r(LOTUS_UINPUT_PROXY_USER, &pwd, buffer.data(), buffer.size(), &result) != 0 || result == nullptr) {
+            return static_cast<uid_t>(-1);
+        }
+        return result->pw_uid;
+    }
+
+} // namespace
+
+bool authenticateServerPeer(int sock) {
     struct ucred cred{};
-    socklen_t    cred_len = sizeof(cred);
-
-    if (getsockopt(sock, SOL_SOCKET, SO_PEERCRED, &cred, &cred_len) != 0) {
-        LOTUS_ERROR("Failed to get peer credentials: " + std::string(strerror(errno)));
+    socklen_t    len = sizeof(cred);
+    if (getsockopt(sock, SOL_SOCKET, SO_PEERCRED, &cred, &len) != 0) {
+        LOTUS_ERROR("Failed to get the uinput server peer credentials: " + std::string(strerror(errno)));
         return false;
     }
-
-    std::array<char, 64> proc_path{};
-    snprintf(proc_path.data(), proc_path.size(), "/proc/%d/cmdline", cred.pid);
-
-    FdGuard fd(open(proc_path.data(), O_RDONLY));
-    if (!fd.is_valid()) {
-        LOTUS_ERROR("Failed to open cmdline: " + std::string(strerror(errno)));
-        return false;
+    const bool testMode = !getEnv(LOTUS_SOCKET_NAMESPACE_ENV).empty();
+    if (isAllowedServerUid(cred.uid, proxyUid(), getuid(), testMode)) {
+        return true;
     }
-
-    std::array<char, PATH_MAX> exe_path{};
-    ssize_t                    bytes_read = read(fd.get(), exe_path.data(), exe_path.size() - 1);
-
-    if (bytes_read <= 0) {
-        LOTUS_ERROR("Failed to read cmdline: " + std::string(strerror(errno)));
-        return false;
-    }
-
-    out_exe_path = exe_path.data();
-
-    return isAllowedExecutablePath(exe_path.data(), LOTUS_SERVER_EXECUTABLE, LOTUS_ALT_EXECUTABLE_PREFIX);
+    LOTUS_WARN("Refusing a uinput server socket held by UID " + std::to_string(cred.uid));
+    return false;
 }
