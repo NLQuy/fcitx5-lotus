@@ -468,21 +468,23 @@ namespace fcitx {
             }
         }
         LOTUS_INFO("Perform replacement: " + lotus::utf8::encode(diffPart.deletedPart) + " -> " + lotus::utf8::encode(diffPart.addedPart)); //NOLINT
-        current_backspace_count_       = 0;
-        pending_commit_string_         = diffPart.addedPart;
-        expected_backspaces_           = diffPart.deletedPart.size();
-        const auto& surrounding        = ic_.surroundingText();
-        bool        isAutofillCertain_ = isAutofillCertain(surrounding);
+        current_backspace_count_ = 0;
+        pending_commit_string_   = diffPart.addedPart;
+        expected_backspaces_     = diffPart.deletedPart.size();
+        const auto& surrounding  = ic_.surroundingText();
+        // Skipped for Select: the app only sees expected_backspaces_ - 1
+        // arrows, and an autofill suffix is already selected, so the arrows
+        // grow that selection leftward and the commit replaces both at once.
+        // Falling back to backspaces with the compensation below deletes one
+        // real character too many whenever the heuristic misfires ("hiện" ->
+        // "hện"), see test/select-mode-autofill.cpp.
+        const bool isAutofillCertain_ = realMode != LotusMode::Select && isAutofillCertain(surrounding);
         if (realMode != LotusMode::Minecraft) {
             ++expected_backspaces_;
             // Enable Autofill detection for all frontends (Wayland/IBus).
             // This fixes the "toôi" duplication bug in Chromium-based search bars.
             // The isAutofillCertain function has been optimized to differentiate
             // between browser autofill and AI ghost text.
-            // Skipped for Select: the app only sees expected_backspaces_ - 1
-            // arrows, and the autofill suffix is already selected, so the one
-            // arrow reaches the character being replaced and the commit swaps
-            // both at once.
             if (realMode != LotusMode::SuperSmooth && isAutofillCertain_) {
                 ++expected_backspaces_;
             }
@@ -492,7 +494,7 @@ namespace fcitx {
         // Select mode: the uinput server selects with Shift+Left instead. The
         // trigger-key compensation above still applies because the last echoed
         // Left is swallowed; autofill compensation does not, see above.
-        if (realMode == LotusMode::Select && !isAutofillCertain_) {
+        if (realMode == LotusMode::Select) {
             send_select_uinput(expected_backspaces_, pre_delay, interval, post_delay);
             LOTUS_INFO("Send select of " + std::to_string(expected_backspaces_) + " characters");
             return;

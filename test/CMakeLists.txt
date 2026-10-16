@@ -75,6 +75,8 @@ add_lotus_headless_test(smooth_buffered_key_replay
     smooth-buffered-key-replay.cpp "integration;smooth")
 add_lotus_headless_test(select_mode_replacement
     select-mode-replacement.cpp "integration;select")
+add_lotus_headless_test(select_mode_autofill
+    select-mode-autofill.cpp "integration;select")
 add_lotus_headless_test(app_rule_delays app-rule-delays.cpp "integration;apprule")
 add_lotus_headless_test(replacement_delays replacement-delays.cpp "integration;smooth")
 add_lotus_headless_test(app_rule_delay_wire app-rule-delay-wire.cpp "integration;apprule")
@@ -85,7 +87,7 @@ target_include_directories(uinput_device PRIVATE ${PROJECT_SOURCE_DIR}/server)
 add_lotus_headless_test(config_enum_names config-enum-names.cpp "unit;config")
 
 string(MD5 LOTUS_CTEST_SOCKET_NAMESPACE "${PROJECT_BINARY_DIR}")
-set_tests_properties(smooth_buffered_key_replay select_mode_replacement replacement_delays app_rule_delay_wire
+set_tests_properties(smooth_buffered_key_replay select_mode_replacement select_mode_autofill replacement_delays app_rule_delay_wire
     PROPERTIES RESOURCE_LOCK lotus_kb_socket
     ENVIRONMENT "LOTUS_SOCKET_NAMESPACE=ctest-${LOTUS_CTEST_SOCKET_NAMESPACE}")
 add_lotus_headless_test(modifier_key_bypasses_surrounding_text
