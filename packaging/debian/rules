@@ -11,4 +11,4 @@ override_dh_dwz:
 	@echo "Skipping dh_dwz (incompatible with mixed debug sections)"
 
 override_dh_auto_configure:
-	dh_auto_configure -- -DLOTUS_BYTECOMPILE_PYTHON=OFF -DBUILD_TESTING=ON
+	dh_auto_configure -- -DLOTUS_BYTECOMPILE_PYTHON=OFF -DBUILD_TESTING=ON -DLOTUS_VERSION_SUFFIX=$(LOTUS_VERSION_SUFFIX)

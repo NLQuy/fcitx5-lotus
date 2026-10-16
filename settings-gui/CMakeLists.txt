@@ -5,6 +5,12 @@ set(SETTINGS_GUI_FULL_PATH "${CMAKE_INSTALL_FULL_DATADIR}/${PROJECT_NAME}/settin
 
 option(LOTUS_BYTECOMPILE_PYTHON "Byte-compile Python scripts during install" ON)
 
+if(LOTUS_VERSION_SUFFIX)
+    set(LOTUS_VERSION_LABEL "${LOTUS_DISPLAY_VERSION}")
+else()
+    set(LOTUS_VERSION_LABEL "${PROJECT_VERSION} (Stable)")
+endif()
+
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/version.py.in"
     "${CMAKE_CURRENT_BINARY_DIR}/version.py"

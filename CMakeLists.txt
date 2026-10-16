@@ -57,6 +57,9 @@ set(LOTUS_ALT_EXECUTABLE_PREFIX "" CACHE STRING
     "Additional prefix whose <prefix>*bin/<name> executables are accepted too (NixOS: /nix/store/)")
 set(LOTUS_SETFACL_EXECUTABLE "/usr/bin/setfacl" CACHE FILEPATH
     "setfacl used by the udev rule and the service units")
+set(LOTUS_VERSION_SUFFIX "" CACHE STRING
+    "Suffix appended to the version shown in Lotus Settings and the fcitx5 addon list, to tell local builds apart (e.g. +local1)")
+set(LOTUS_DISPLAY_VERSION "${PROJECT_VERSION}${LOTUS_VERSION_SUFFIX}")
 
 add_subdirectory(common)
 add_subdirectory(po)

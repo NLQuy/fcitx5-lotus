@@ -1,7 +1,7 @@
 [Addon]
 Name=Lotus Wrapper For Fcitx
 Category=InputMethod
-Version=@PROJECT_VERSION@
+Version=@LOTUS_DISPLAY_VERSION@
 Enabled=True
 Library=liblotus
 Type=SharedLibrary
