@@ -15,6 +15,10 @@ target_link_libraries(lotus_test_core PUBLIC
     Pthread::Pthread
 )
 
+# Socket namespace of this build tree: every headless test gets it, so none of
+# them reaches the uinput server of the user running the tests.
+string(MD5 LOTUS_CTEST_SOCKET_NAMESPACE "${PROJECT_BINARY_DIR}")
+
 # Helper to compile a standalone headless integration test linked with the
 # Lotus engine core.
 #
@@ -32,7 +36,8 @@ function(add_lotus_headless_test target source labels)
         Pthread::Pthread
     )
     add_test(NAME ${target} COMMAND ${target})
-    set_tests_properties(${target} PROPERTIES LABELS "${labels}" TIMEOUT 20)
+    set_tests_properties(${target} PROPERTIES LABELS "${labels}" TIMEOUT 20
+        ENVIRONMENT "LOTUS_SOCKET_NAMESPACE=ctest-${LOTUS_CTEST_SOCKET_NAMESPACE}")
 endfunction()
 
 # One binary runs every engine unit test group via "--run <fn>"; ctest keeps
@@ -99,7 +104,6 @@ target_link_libraries(uinput_device PRIVATE PkgConfig::LIBEVDEV)
 target_include_directories(uinput_device PRIVATE ${PROJECT_SOURCE_DIR}/server)
 add_lotus_headless_test(config_enum_names config-enum-names.cpp "unit;config")
 
-string(MD5 LOTUS_CTEST_SOCKET_NAMESPACE "${PROJECT_BINARY_DIR}")
 set_tests_properties(smooth_buffered_key_replay select_mode_replacement select_mode_autofill replay_single_commit replay_non_text_keys select_mode_backspace replacement_watchdog replacement_watchdog_trigger replacement_cancel replacement_delays app_rule_delay_wire
     PROPERTIES RESOURCE_LOCK lotus_kb_socket
     ENVIRONMENT "LOTUS_SOCKET_NAMESPACE=ctest-${LOTUS_CTEST_SOCKET_NAMESPACE}")

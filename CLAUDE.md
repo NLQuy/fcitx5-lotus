@@ -25,7 +25,7 @@ ctest --test-dir build -L integration      # by label: unit, integration, golden
 ./build/test/preedit_lifecycle             # each headless integration test is its own binary
 ```
 
-- ctest sets `LOTUS_SOCKET_NAMESPACE` for the tests that use the uinput keyboard socket: the ones listed with `RESOURCE_LOCK lotus_kb_socket` in `test/CMakeLists.txt`. Add any new socket test to that list. If you run those binaries directly, set `LOTUS_SOCKET_NAMESPACE=<anything>` yourself. Otherwise they use the same abstract socket name as a real `fcitx5-lotus-server` running for your user.
+- ctest gives every headless test `LOTUS_SOCKET_NAMESPACE`, so none of them reaches the real `fcitx5-lotus-server` of the user running the tests. Tests that use the keyboard socket also take `RESOURCE_LOCK lotus_kb_socket` (the list in `test/CMakeLists.txt`) so they never run in parallel; add any new socket test to that list. If you run a headless test binary directly, set `LOTUS_SOCKET_NAMESPACE=<anything>` yourself.
 - `LOTUS_GOLDEN_DIR=<dir>` points the golden replays (`--run engine`, `--run key_processor`, `--run golden_smoke`) at another corpus. `test/golden/README.md` still uses the old per-test binary names (`./build/test/lotus_engine_test`); the current binary is `lotus_unit_tests --run …`.
 
 Formatting (CI checks both):
