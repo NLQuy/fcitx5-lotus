@@ -362,6 +362,16 @@ namespace fcitx {
         void replayBufferedKeys(std::u32string pendingCommit = {});
 
         /**
+         * @brief Sends a buffered key the engine does not type (a shortcut, Enter,
+         * an arrow, BackSpace, ...) to the app as a press and a release.
+         *
+         * BackSpace keeps editing the current word, every other key ends it.
+         * @param sym Key symbol of the buffered key.
+         * @param state Modifier states of the buffered key.
+         */
+        void replayAsKey(KeySym sym, uint32_t state);
+
+        /**
          * @brief Checks if the key symbol matches the configured macro-skip modifier.
          * @param sym Key symbol to check.
          * @return True if the key is the configured trigger modifier (left/right same).

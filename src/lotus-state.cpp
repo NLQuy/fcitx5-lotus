@@ -1060,8 +1060,9 @@ namespace fcitx {
                     symToBuffer   = unshiftKeySym(symToBuffer);
                     stateToBuffer = stateToBuffer.unset(KeyState::Shift);
                 }
-                std::string keyUtf8Check = Key::keySymToUTF8(symToBuffer);
-                if (!keyUtf8Check.empty() && buffered_keys_.size() < MAX_BUFFERED_KEYS) {
+                // Every key but a lone modifier waits, text or not: the replay
+                // sends shortcuts, Enter, arrows and the like to the app as keys.
+                if (!keyEvent.rawKey().isModifier() && buffered_keys_.size() < MAX_BUFFERED_KEYS) {
                     LOTUS_WARN("Typing so fast, add key to queue");
                     buffered_keys_.push_back({.sym = symToBuffer, .state = stateToBuffer});
                 }
@@ -1273,7 +1274,11 @@ namespace fcitx {
             auto           sym          = static_cast<KeySym>(keys[i].sym);
             uint32_t       state        = keys[i].state;
             const uint32_t keyCodePoint = Key::keySymToUnicode(sym);
-            if (keyCodePoint == 0U) {
+            // Shortcuts and keys without text (Enter, Tab, arrows, BackSpace, ...)
+            // reach the app as keys, after the text replayed so far.
+            if (keyCodePoint < 0x20U || keyCodePoint == 0x7FU || !lotus::KeyProcessor::isValidState(lotus::keyStatesFromBits(state))) {
+                flushCommit();
+                replayAsKey(sym, state);
                 continue;
             }
             const std::u32string keyText(1, static_cast<char32_t>(keyCodePoint));
@@ -1346,6 +1351,22 @@ namespace fcitx {
         }
         flushCommit();
         LOTUS_INFO("Replay buffered keys done");
+    }
+
+    void LotusState::replayAsKey(KeySym sym, uint32_t state) {
+        if (isBackspace(sym)) {
+            // Keep the engine in step with the app, like handleUinputMode does.
+            hasHistory_ = true;
+            lotusEngine_->processKey(FcitxKey_BackSpace, {});
+            oldPreBuffer_ = pullPreeditString();
+        } else {
+            hasHistory_ = false;
+            (*lotusEngine_).reset();
+            oldPreBuffer_.clear();
+        }
+        const Key key(sym, KeyStates(state));
+        ic_.forwardKey(key, false);
+        ic_.forwardKey(key, true);
     }
 
     bool LotusState::isMacroSkipModifier(KeySym sym) const {
