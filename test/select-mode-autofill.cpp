@@ -76,9 +76,9 @@ int main() {
         return 1;
     }
 
-    // Echoes: the first arrow extends the selection, Delete clears it and the
+    // Echoes: the first arrow extends the selection, BackSpace deletes it and the
     // last arrow commits the replacement.
-    if (!send(engine, entry, *context, FcitxKey_Left, false) || !send(engine, entry, *context, FcitxKey_Delete, false) || !send(engine, entry, *context, FcitxKey_Left, true))
+    if (!send(engine, entry, *context, FcitxKey_Left, false) || !send(engine, entry, *context, FcitxKey_BackSpace, false) || !send(engine, entry, *context, FcitxKey_Left, true))
         return 1;
     const std::vector<std::string> expected{"á"};
     if (context->commits() != expected) {

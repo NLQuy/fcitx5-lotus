@@ -17,7 +17,7 @@
  */
 enum class KbOp : int8_t {
     Backspace = 0, ///< emit count BackSpace key events
-    Select    = 1, ///< select count characters via Shift+Left
+    Select    = 1, ///< select count - 1 characters with Shift+Left, delete them with BackSpace, then a trigger Left
     Cancel    = 2, ///< drop the keys still queued from earlier requests (count unused)
 };
 

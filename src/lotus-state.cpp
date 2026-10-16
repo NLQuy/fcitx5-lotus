@@ -1129,16 +1129,16 @@ namespace fcitx {
                 if (handleUInputKeyPress(keyEvent, currentSym)) {
                     return true;
                 }
-            } else if (realMode == LotusMode::Select && (currentSym == FcitxKey_Left || currentSym == FcitxKey_Delete)) {
-                if (currentSym == FcitxKey_Left) {
-                    // Echoed left arrow extends the selection in the app: consume it as
-                    // a selection signal, never buffer it for replay.
-                    if (realtextLen.load(std::memory_order_acquire) > 0)
-                        realtextLen.fetch_sub(1, std::memory_order_acq_rel);
-                    handleUInputKeyPress(keyEvent, currentSym);
-                } else {
-                    keyEvent.forward();
-                }
+            } else if (realMode == LotusMode::Select && currentSym == FcitxKey_Left) {
+                // Echoed left arrow extends the selection in the app: consume it as
+                // a selection signal, never buffer it for replay.
+                if (realtextLen.load(std::memory_order_acquire) > 0)
+                    realtextLen.fetch_sub(1, std::memory_order_acq_rel);
+                handleUInputKeyPress(keyEvent, currentSym);
+                return true;
+            } else if (realMode == LotusMode::Select && isBackspace(currentSym) && current_backspace_count_ + 1 == expected_backspaces_) {
+                // Once every selecting arrow came back, the server deletes the
+                // selection with BackSpace: let it reach the app.
                 return true;
             } else {
                 KeySym    symToBuffer   = currentSym;

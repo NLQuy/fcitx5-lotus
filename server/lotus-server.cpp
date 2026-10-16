@@ -339,7 +339,10 @@ int main(int argc, char* argv[]) {
                         uinput.send_shift_up();
                         shift_held = false;
                     } else {
-                        uinput.send_delete();
+                        // BackSpace, not Delete: while the user holds Shift (typing a
+                        // capital), Shift+Delete means Cut in most toolkits and would
+                        // overwrite the clipboard, while Shift+BackSpace only deletes.
+                        uinput.send_backspace();
                         if (current_post_delay > 0) {
                             std::this_thread::sleep_for(std::chrono::milliseconds(current_post_delay));
                         }

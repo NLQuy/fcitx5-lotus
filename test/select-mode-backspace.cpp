@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Select mode echoes Shift+Left and Delete, never BackSpace, so a BackSpace
-// that arrives during a selection comes from the user. It used to be counted
-// as an echo, which finished the replacement early: the replacement was
-// committed before the app had deleted the selection, and the remaining
-// Delete and Left reached the app as ordinary keys. The BackSpace must wait
-// and reach the app after the replacement.
+// Select mode echoes the selecting Shift+Left presses, then one BackSpace that
+// deletes the selection, then the trigger Left. A BackSpace that arrives
+// before every selecting arrow came back comes from the user. It used to be
+// counted as an echo, which finished the replacement early: the replacement
+// was committed before the app had deleted the selection, and the server's
+// remaining keys reached the app as ordinary keys. The user's BackSpace must
+// wait and reach the app after the replacement.
 #include "kb-socket-listener.h"
 #include "lotus-engine.h"
 #include "test-input-context.h"
@@ -68,7 +69,7 @@ int main() {
     // The user's BackSpace during the selection waits for the replacement.
     if (!send(engine, entry, *context, FcitxKey_BackSpace, true))
         return 1;
-    if (!send(engine, entry, *context, FcitxKey_Left, false) || !send(engine, entry, *context, FcitxKey_Delete, false))
+    if (!send(engine, entry, *context, FcitxKey_Left, false) || !send(engine, entry, *context, FcitxKey_BackSpace, false))
         return 1;
     if (!context->commits().empty()) {
         reportFailure("wait for the last echo", "no commit before the last Left", "commits=" + std::to_string(context->commits().size()),

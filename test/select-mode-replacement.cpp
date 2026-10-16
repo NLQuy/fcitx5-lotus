@@ -95,7 +95,7 @@ int main() {
         if (!send(engine, entry, *context, FcitxKey_Left, false))
             return 1;
     }
-    if (!send(engine, entry, *context, FcitxKey_Delete, false))
+    if (!send(engine, entry, *context, FcitxKey_BackSpace, false))
         return 1;
     if (!send(engine, entry, *context, FcitxKey_Left, true))
         return 1;
@@ -117,7 +117,7 @@ int main() {
         if (!send(engine, entry, *context, FcitxKey_Left, false))
             return 1;
     }
-    if (!send(engine, entry, *context, FcitxKey_Delete, false))
+    if (!send(engine, entry, *context, FcitxKey_BackSpace, false))
         return 1;
     if (!send(engine, entry, *context, FcitxKey_Left, true))
         return 1;
