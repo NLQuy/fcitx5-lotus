@@ -34,7 +34,12 @@
 
 std::atomic<bool> g_running{true};
 
-bool              UinputDevice::initialize() {
+// Bounds on one request: the addon asks for about a word's worth of keys and
+// clamps its delays to 1 s, so anything beyond comes from a broken client.
+constexpr std::size_t kMaxRequestKeys = 256;
+constexpr uint32_t    kMaxDelayMs     = 1000;
+
+bool                  UinputDevice::initialize() {
     dev_ = buildLotusUinputDevice();
     if (dev_ == nullptr) {
         LotusLogger::instance().error("Failed to build the uinput device description");
@@ -385,17 +390,20 @@ int main(int argc, char* argv[]) {
                 LotusLogger::instance().warn("Malformed keyboard message (" + std::to_string(n) + " bytes)");
             } else if (msg.op == KbOp::Cancel) {
                 abortPending();
+            } else if (msg.count > kMaxRequestKeys) {
+                LotusLogger::instance().warn("Ignoring a request of " + std::to_string(msg.count) + " keys");
             } else {
-                current_interval = msg.interval > 0 ? std::min<uint32_t>(msg.interval, 1000) : 5;
+                const uint32_t pre_delay = std::min(msg.pre_delay, kMaxDelayMs);
+                current_interval         = msg.interval > 0 ? std::min(msg.interval, kMaxDelayMs) : 5;
                 if (msg.count == 1 && msg.op == KbOp::Select) {
                     // Shift is released before the last key of a selection, so a
                     // selection of one key would leave it held.
                     LotusLogger::instance().warn("Ignoring a selection of a single key");
                 } else if (msg.count > 0 && msg.op == KbOp::Select) {
-                    if (msg.pre_delay > 0) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(msg.pre_delay));
+                    if (pre_delay > 0) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(pre_delay));
                     }
-                    current_post_delay = msg.post_delay;
+                    current_post_delay = std::min(msg.post_delay, kMaxDelayMs);
                     if (!shift_held) {
                         uinput.send_shift_down();
                         shift_held = true;
@@ -406,10 +414,10 @@ int main(int argc, char* argv[]) {
                     next_key_due = std::chrono::steady_clock::now() + std::chrono::milliseconds(current_interval);
 
                 } else if (msg.count > 0 && msg.op == KbOp::Backspace) {
-                    if (msg.pre_delay > 0) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(msg.pre_delay));
+                    if (pre_delay > 0) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(pre_delay));
                     }
-                    current_post_delay = msg.post_delay;
+                    current_post_delay = std::min(msg.post_delay, kMaxDelayMs);
                     if (shift_held) {
                         // A stale in-flight selection must not mix with backspaces.
                         uinput.send_shift_up();
